@@ -24,14 +24,13 @@ import random
 #use ensembles (average output over group ~5 neural networks).  Can give up to 2% improvement!
 #just train longer (learning may seem to stall only to pick up again later)
 
-#try inputting all zeros - does the network learn to output all 
+#change SGD to Adam (adaptive moment estimation)
+#if using softmax activation for output, need to define log-likelihood loss and gradients
+#add regularization once we find a really low cost
 
-#look at Nielson book on computing stochastic gradient descent
-    #he keeps track of the batch dimension all the way up to the final weight/biases update - there he averages the errors * prev_activations / errors
-    #is this any different from averaging it when computing errors????
-
-    #could this be the current problem??? Earlier the problem might have been the wrong weight initialization (all were set to range [0, 1) rather than [-.5, .5),
-        #and all the activations were saturating on the first training batch
+#current best 97.6% cross entropy cost function, sigmoid output activation, 50 epochs, zero initial biases, weights initialized to mean 0, std 1/sqrt(input dim), lr =0.3, batch=64
+#batch size of 32 with lr =0.2 causes both loss function and accuracy to increase near the end
+#best .1851 loss, 97.69% accuracy
 
 #*********************************DATA PROCESSING*******************************
 
@@ -84,6 +83,9 @@ class Loader:
     def reset(self):
         self.index = 0
 
+    def size(self):
+        return len(self.data)
+
     def empty(self):
         return self.index >= len(self.data)
 
@@ -95,13 +97,15 @@ def one_hot_encode(label):
 
 #********************NETWORK********************************
 
-#***************MSE and Sigmoid activation****************
+#***************MSE/Cross Entropy and Sigmoid activation****************
 #MSE is output minus labeled ground truth
 def mse(pred, truth):
-    return np.square(pred - truth) / 2.0
+    batch_size = pred.shape[0]
+    return np.square(pred - truth) / 2.0 / batch_size
 
-def mse_prime(pred, truth):
-    return pred - truth
+def mse_grad(pred, truth, z):
+    sp = sigmoid_prime(z)
+    return np.multiply(pred - truth, sp)
 
 def sigmoid(z):
     return 1.0 / (1.0 + np.exp(-z))
@@ -109,35 +113,38 @@ def sigmoid(z):
 def sigmoid_prime(z):
     return sigmoid(z) * (1 - sigmoid(z))
 
-#************Cross entropy and Softmax (for output)*********
-#def cross_entropy(pred, truth):
-#    one_minus_pred = np.ones(pred.shape) - pred
-#    one_minus_truth = np.ones(truth.shape) - truth
-#    term_one = np.multiply(truth, np.log(pred))
-#    term_two = np.multiply(one_minus_truth, np.log(one_minus_pred))
-#    return -np.sum(term_one + term_two)
-#
-#
-#def cross_entropy_grad(pred, truth):
-#    term_one = -np.divide(truth, pred)
-#    term_two = np.divide(1 - truth, 1 - pred)
-#    return term_one + term_two
-#
-#
-#def softmax(z):
-#    exp_sum = np.sum(np.exp(z), axis=1)
-#    return np.divide(np.exp(z), np.reshape(exp_sum, (-1, 1)))
+def cross_entropy(pred, truth):
+    batch_size = pred.shape[0]
+    one_minus_pred = np.ones(pred.shape) - pred
+    one_minus_truth = np.ones(truth.shape) - truth
+    term_one = np.multiply(truth, np.log(pred))
+    term_two = np.multiply(one_minus_truth, np.log(one_minus_pred))
+    return -(term_one + term_two) / batch_size
 
+#doesn't use z term, but just keeping consistent APIs for gradient functions
+def cross_entropy_grad(pred, truth, z):
+    return pred - truth
 
+#************Log likelihood and Softmax (for output)*********
+#does using softmax for output change the cross entropy gradient - it might - need to to find derivative wrt input z
+def softmax(z):
+    exp_sum = np.reshape(np.sum(np.exp(z), axis=1), (-1, 1))
+    return np.divide(np.exp(z), np.repeat(exp_sum, z.shape[1], axis=1))
+
+def log_likelihood(pred, truth):
+    print('hi')
+
+def log_likelihood_grad(pred, truth, z):
+    print('hi')
 
 #define the vanilla feedforward network
 #activations and z need to be 2d matrices since the first dimension is for batch - or just average them
 class FNN:
     def __init__(self, dims):
+        np.random.seed(0) 
+        self.weights = [np.random.normal(0.0, 1.0 / np.sqrt(input_dim), (input_dim, output_dim)) for input_dim, output_dim in zip(dims[:-1], dims[1:])]
         np.random.seed(0)
-        self.weights = [np.random.rand(input_dim, output_dim) - 0.5 for input_dim, output_dim in zip(dims[:-1], dims[1:])]
-        np.random.seed(0)
-        self.biases = [np.random.rand(1, x) for x in dims[1:]]
+        self.biases = [np.zeros((1, x)) for x in dims[1:]]
         self.a = [0 for dim in dims[1:]]
         self.z = [0 for dim in dims[1:]]
         self.errors = [np.zeros(dim) for dim in dims[1:]]
@@ -146,28 +153,35 @@ class FNN:
         batch_size = x.shape[0]
         y = x
         for idx, (w, b) in enumerate(zip(self.weights, self.biases)):
-            self.z[idx] = np.matmul(y, w) + np.tile(b, (x.shape[0], 1)) #tilin
-            self.a[idx] = sigmoid(self.z[idx])
+            self.z[idx] = np.matmul(y, w) + np.tile(b, (x.shape[0], 1))
+            if idx == 1:
+                self.a[idx] = sigmoid(self.z[idx])
+            else:
+                self.a[idx] = sigmoid(self.z[idx])
             y = self.a[idx]
         return y
 
-    def train_batch(self, batch):
-        lr = 0.1
+    def train_batch(self, batch, set_size):
+        lr = 0.2
+        lmda = 5.0
         x, truth = batch
         pred = self.forward(x)
         batch_size = x.shape[0]
+        weight_decay = (1.0 - lr * lmda / set_size)
         
         #updating weights/biases in final layer
-        cost_grad = mse_prime(pred, truth)
-        sigmoid_p2 = sigmoid_prime(self.z[1])
-        self.errors[1] = np.multiply(cost_grad, sigmoid_p2)
+        #cost_grad = mse_grad(pred, truth, self.z[1])
+        cost_grad = cross_entropy_grad(pred, truth, self.z[1])
+        self.errors[1] = cost_grad
+        self.weights[1] *= weight_decay
         self.weights[1] -= lr * np.matmul(np.transpose(self.a[0]), self.errors[1]) / batch_size
         self.biases[1] -= lr * np.sum(self.errors[1], axis=0) / batch_size
 
-        #updating weights and biases in second layer
+        #updating weights and biases in second layer - note: cross entropy cost only avoids sigmoid saturation on output, sigmoid prime terms still in other layers
         weight_err2 = np.matmul(self.errors[1], np.transpose(self.weights[1]))
         sigmoid_p1 = sigmoid_prime(self.z[0])
         self.errors[0] = np.multiply(weight_err2, sigmoid_p1)
+        self.weights[0] *= weight_decay
         self.weights[0] -= lr * np.matmul(np.transpose(x), self.errors[0]) / batch_size
         self.biases[0] -= lr * np.sum(self.errors[0], axis=0) / batch_size
 

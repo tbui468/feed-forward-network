@@ -14,8 +14,8 @@ import torch.optim as optim
 train_data, valid_data, test_data = fnn.load_data(1.0)
 
 
-batch_size = 64
-epochs = 30
+batch_size = 32
+epochs = 50
 
 train_loader = fnn.Loader(train_data, batch_size)
 valid_loader = fnn.Loader(valid_data)
@@ -33,7 +33,7 @@ def custom_net():
         train_loader.reset()
         #train_loader.shuffle()
         while not train_loader.empty():
-            network.train_batch(train_loader.next())
+            network.train_batch(train_loader.next(), train_loader.size())
 
         valid_loader.reset()
         #valid_loader.shuffle()
@@ -45,7 +45,7 @@ def custom_net():
         while not valid_loader.empty():
             x, labels = valid_loader.next()
             pred = network.forward(x)
-            loss += fnn.mse(pred, labels)
+            loss += fnn.cross_entropy(pred, labels)
             for a, b in zip(np.argmax(labels, axis=1), np.argmax(pred, axis=1)):
                 if a == b:
                     correct += 1

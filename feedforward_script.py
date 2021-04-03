@@ -11,7 +11,7 @@ import torch.optim as optim
 #wrap scripts into two functions (train pytorch model vs train custom model)
 
 
-train_data, valid_data, test_data = fnn.load_data(0.5)
+train_data, valid_data, test_data = fnn.load_data(1.0)
 
 
 batch_size = 64
@@ -23,7 +23,7 @@ test_loader = fnn.Loader(test_data, batch_size)
 
 
 def custom_net():
-    layer_dims = [784, 32, 10]
+    layer_dims = [784, 64, 10]
     network = fnn.FNN(layer_dims)
     
     #network.train_batch(train_loader.next())
@@ -31,12 +31,12 @@ def custom_net():
 
     for epoch in range(epochs):
         train_loader.reset()
-        train_loader.shuffle()
+        #train_loader.shuffle()
         while not train_loader.empty():
             network.train_batch(train_loader.next())
 
         valid_loader.reset()
-        valid_loader.shuffle()
+        #valid_loader.shuffle()
         total = 0
         correct = 0
         loss = 0
@@ -50,7 +50,8 @@ def custom_net():
                 if a == b:
                     correct += 1
                 total += 1
-        print("Loss: ", loss, " Correct: ", correct, "/", total)
+
+        print("Loss: ", np.sum(loss), " Correct: ", correct, "/", total)
 
 custom_net()
 

@@ -3,6 +3,29 @@ import pickle
 import numpy as np
 import random
 
+#initialize bias to mean (if regression).  If positive:negative ration is 1:10, set weights so initial probability output is .1
+#visualize data BEFORE pred = model(x) 
+#test loss over entire valid/test set (not just a batch)
+    #add sig figs!!! so that we know if the difference is significant or just noise
+#try overfitting a single small batch (as little as two samples) to make sure gradient descent is working (should be able to get to 0)
+#consider writing looopy loops (instead of having batches) initially and vectorize after it starts to work
+
+#overfit first with a good model to make loss as small as possible, then give up some of that loss to regularize (to improve validation accuracy)
+#use simplilist architecture that will work and get it working
+#use Adam 3e-4 (instead of SGD, except on mabye ConvNets)
+
+#dropout
+#more data, or augment data
+#use pretrained network (if one that fits your goals is available)
+#smaller batch gives similar effect to regularization
+#early stopping
+
+#use constant lr (rather than learning rate decay) at the beginning.  Tune that after everything works
+#use ensembles (average output over group ~5 neural networks).  Can give up to 2% improvement!
+#just train longer (learning may seem to stall only to pick up again later)
+
+#try inputting all zeros - does the network learn to output all 
+
 #look at Nielson book on computing stochastic gradient descent
     #he keeps track of the batch dimension all the way up to the final weight/biases update - there he averages the errors * prev_activations / errors
     #is this any different from averaging it when computing errors????
@@ -73,12 +96,12 @@ def one_hot_encode(label):
 #********************NETWORK********************************
 
 #***************MSE and Sigmoid activation****************
+#MSE is output minus labeled ground truth
 def mse(pred, truth):
-    squared_diff = np.square(truth - pred) / 2.0
-    return np.sum(squared_diff, axis=0) / pred.shape[0]
+    return np.square(pred - truth) / 2.0
 
 def mse_prime(pred, truth):
-    return np.sum(truth - pred, axis=0) / pred.shape[0]
+    return pred - truth
 
 def sigmoid(z):
     return 1.0 / (1.0 + np.exp(-z))
@@ -111,22 +134,21 @@ def sigmoid_prime(z):
 #activations and z need to be 2d matrices since the first dimension is for batch - or just average them
 class FNN:
     def __init__(self, dims):
+        np.random.seed(0)
         self.weights = [np.random.rand(input_dim, output_dim) - 0.5 for input_dim, output_dim in zip(dims[:-1], dims[1:])]
-        self.biases = [np.zeros((1, x)) for x in dims[1:]]
-        self.a = [np.zeros(dim) for dim in dims[1:]]
-        self.z = [np.zeros(dim) for dim in dims[1:]]
+        np.random.seed(0)
+        self.biases = [np.random.rand(1, x) for x in dims[1:]]
+        self.a = [0 for dim in dims[1:]]
+        self.z = [0 for dim in dims[1:]]
         self.errors = [np.zeros(dim) for dim in dims[1:]]
    
     def forward(self, x):
         batch_size = x.shape[0]
         y = x
         for idx, (w, b) in enumerate(zip(self.weights, self.biases)):
-            z = np.matmul(y, w) + np.tile(b, (x.shape[0], 1)) #tiling biases may be unnecessary, it's clearer
-            a = sigmoid(z)
-            y = a
-            #save activations and linear combination (z) for backprop 
-            self.z[idx] = np.sum(z, axis=0) / batch_size
-            self.a[idx] = np.sum(a, axis=0) / batch_size
+            self.z[idx] = np.matmul(y, w) + np.tile(b, (x.shape[0], 1)) #tilin
+            self.a[idx] = sigmoid(self.z[idx])
+            y = self.a[idx]
         return y
 
     def train_batch(self, batch):
@@ -136,18 +158,16 @@ class FNN:
         batch_size = x.shape[0]
         
         #updating weights/biases in final layer
-        cost_grad = mse_prime(pred, truth) #dC/da for all activations in output layer
-        sigmoid_p2 = sigmoid_prime(self.z[1]) #dsigma/dz
-        self.errors[1] = np.multiply(cost_grad, sigmoid_p2) # 10 x 
-        self.weights[1] -= lr * np.matmul(np.reshape(self.a[0], (-1, 1)), np.reshape(self.errors[1], (1, -1)))
-        self.biases[1] -= lr * self.errors[1]
-
+        cost_grad = mse_prime(pred, truth)
+        sigmoid_p2 = sigmoid_prime(self.z[1])
+        self.errors[1] = np.multiply(cost_grad, sigmoid_p2)
+        self.weights[1] -= lr * np.matmul(np.transpose(self.a[0]), self.errors[1]) / batch_size
+        self.biases[1] -= lr * np.sum(self.errors[1], axis=0) / batch_size
 
         #updating weights and biases in second layer
-        weight_err2 = np.matmul(self.weights[1], np.reshape(self.errors[1], (-1, 1)))
+        weight_err2 = np.matmul(self.errors[1], np.transpose(self.weights[1]))
         sigmoid_p1 = sigmoid_prime(self.z[0])
-        self.errors[0] = np.multiply(weight_err2, np.reshape(sigmoid_p1, (-1, 1)))
-        avg_inputs = np.sum(x, axis=0) / batch_size
-        self.weights[0] -= lr * np.matmul(np.reshape(avg_inputs, (-1, 1)), np.transpose(self.errors[0]))
-        self.biases[0] -= lr * np.transpose(self.errors[0])
+        self.errors[0] = np.multiply(weight_err2, sigmoid_p1)
+        self.weights[0] -= lr * np.matmul(np.transpose(x), self.errors[0]) / batch_size
+        self.biases[0] -= lr * np.sum(self.errors[0], axis=0) / batch_size
 

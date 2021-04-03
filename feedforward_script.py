@@ -14,11 +14,11 @@ import torch.optim as optim
 train_data, valid_data, test_data = fnn.load_data(0.5)
 
 
-batch_size = 32
+batch_size = 64
 epochs = 30
 
 train_loader = fnn.Loader(train_data, batch_size)
-valid_loader = fnn.Loader(valid_data, batch_size)
+valid_loader = fnn.Loader(valid_data)
 test_loader = fnn.Loader(test_data, batch_size)
 
 
@@ -27,7 +27,7 @@ def custom_net():
     network = fnn.FNN(layer_dims)
     
     #network.train_batch(train_loader.next())
-    #print(network.forward(train_loader.next()[0]))
+    #network.forward(train_loader.next()[0])
 
     for epoch in range(epochs):
         train_loader.reset()
@@ -40,7 +40,8 @@ def custom_net():
         total = 0
         correct = 0
         loss = 0
-
+        
+        #why isn't the entire validation set being used???
         while not valid_loader.empty():
             x, labels = valid_loader.next()
             pred = network.forward(x)

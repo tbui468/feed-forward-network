@@ -3,8 +3,12 @@ import pickle
 import numpy as np
 import random
 
-#definitely related to how errors/gradient descent is calculated
-#why are the weights/erros in second step in backprop dimensions 8 x 32 (where is the 8 coming from????)
+#look at Nielson book on computing stochastic gradient descent
+    #he keeps track of the batch dimension all the way up to the final weight/biases update - there he averages the errors * prev_activations / errors
+    #is this any different from averaging it when computing errors????
+
+    #could this be the current problem??? Earlier the problem might have been the wrong weight initialization (all were set to range [0, 1) rather than [-.5, .5),
+        #and all the activations were saturating on the first training batch
 
 #*********************************DATA PROCESSING*******************************
 
@@ -33,9 +37,12 @@ def load_data(percent=1.0):
 
 #data is a list of tuples (pixels, one-hot encoded label)
 class Loader:
-    def __init__(self, data, batch_size):
+    def __init__(self, data, batch_size=0):
         self.data = data
-        self.batch_size = batch_size
+        if batch_size == 0: #if no batch size given, use entire dataset
+            self.batch_size = len(data)
+        else:
+            self.batch_size = batch_size
         self.index = 0
 
     def next(self):
@@ -71,7 +78,7 @@ def mse(pred, truth):
     return np.sum(squared_diff, axis=0) / pred.shape[0]
 
 def mse_prime(pred, truth):
-    return (truth - pred)
+    return np.sum(truth - pred, axis=0) / pred.shape[0]
 
 def sigmoid(z):
     return 1.0 / (1.0 + np.exp(-z))
@@ -101,41 +108,46 @@ def sigmoid_prime(z):
 
 
 #define the vanilla feedforward network
-#activations and z need to be 2d matrices since the first dimension is for batch
+#activations and z need to be 2d matrices since the first dimension is for batch - or just average them
 class FNN:
     def __init__(self, dims):
-        self.weights = [np.random.normal(0, 1.0 / np.sqrt(input_dim), (input_dim, output_dim)) for input_dim, output_dim in zip(dims[:-1], dims[1:])]
+        self.weights = [np.random.rand(input_dim, output_dim) - 0.5 for input_dim, output_dim in zip(dims[:-1], dims[1:])]
         self.biases = [np.zeros((1, x)) for x in dims[1:]]
         self.a = [np.zeros(dim) for dim in dims[1:]]
         self.z = [np.zeros(dim) for dim in dims[1:]]
         self.errors = [np.zeros(dim) for dim in dims[1:]]
    
     def forward(self, x):
+        batch_size = x.shape[0]
         y = x
         for idx, (w, b) in enumerate(zip(self.weights, self.biases)):
-            self.z[idx] = np.matmul(y, w) + np.tile(b, (x.shape[0], 1)) #tiling biases may be unnecessary, it's clearer
-            self.a[idx] = sigmoid(self.z[idx])
-            y = self.a[idx]
+            z = np.matmul(y, w) + np.tile(b, (x.shape[0], 1)) #tiling biases may be unnecessary, it's clearer
+            a = sigmoid(z)
+            y = a
+            #save activations and linear combination (z) for backprop 
+            self.z[idx] = np.sum(z, axis=0) / batch_size
+            self.a[idx] = np.sum(a, axis=0) / batch_size
         return y
 
     def train_batch(self, batch):
-        lr = 1.0
-        x, y = batch
+        lr = 0.1
+        x, truth = batch
         pred = self.forward(x)
-        truth = y
+        batch_size = x.shape[0]
         
         #updating weights/biases in final layer
         cost_grad = mse_prime(pred, truth) #dC/da for all activations in output layer
         sigmoid_p2 = sigmoid_prime(self.z[1]) #dsigma/dz
-        self.errors[1] = np.multiply(cost_grad, sigmoid_p2) #32 x 10, 32 x 10
-        self.weights[1] -= lr * np.matmul(np.transpose(self.a[0]), self.errors[1])  #shouldn't the inner dimension be the batch???
-        self.biases[1] -= lr * np.sum(self.errors[1], axis=0)
+        self.errors[1] = np.multiply(cost_grad, sigmoid_p2) # 10 x 
+        self.weights[1] -= lr * np.matmul(np.reshape(self.a[0], (-1, 1)), np.reshape(self.errors[1], (1, -1)))
+        self.biases[1] -= lr * self.errors[1]
 
 
         #updating weights and biases in second layer
-        weight_err2 = np.matmul(self.errors[1], np.transpose(self.weights[1])) #32 x 10, 10 x 32
+        weight_err2 = np.matmul(self.weights[1], np.reshape(self.errors[1], (-1, 1)))
         sigmoid_p1 = sigmoid_prime(self.z[0])
-        self.errors[0] = np.multiply(np.transpose(weight_err2), sigmoid_p1) #what is goind on here?  why is sigmoid 8x32, and weight_err2 8 x 32
-        self.weights[0] -= lr * np.matmul(np.transpose(x), self.errors[0])
-        self.biases[0] -= lr * np.sum(self.errors[0], axis=0)
+        self.errors[0] = np.multiply(weight_err2, np.reshape(sigmoid_p1, (-1, 1)))
+        avg_inputs = np.sum(x, axis=0) / batch_size
+        self.weights[0] -= lr * np.matmul(np.reshape(avg_inputs, (-1, 1)), np.transpose(self.errors[0]))
+        self.biases[0] -= lr * np.transpose(self.errors[0])
 

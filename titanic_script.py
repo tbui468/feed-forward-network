@@ -48,7 +48,37 @@ def load_passenger_data(file_path, load_id=False):
                     if Fare > max_fare:
                         max_fare = Fare
 
-            x = (Pclass, Sex, Age, SibSp, Parch, Fare)
+            Cabin = -1
+            if 'Cabin' in row and row['Cabin'] != '':
+                if row['Cabin'][0] == 'A':
+                    Cabin = 0
+                if row['Cabin'][0] == 'B':
+                    Cabin = 1
+                if row['Cabin'][0] == 'C':
+                    Cabin = 2
+                if row['Cabin'][0] == 'D':
+                    Cabin = 3
+                if row['Cabin'][0] == 'E':
+                    Cabin = 4
+                if row['Cabin'][0] == 'F':
+                    Cabin = 5
+                if row['Cabin'][0] == 'G':
+                    Cabin = 6
+                else:
+                    Cabin = -1
+
+            Embarked = -1
+            if 'Embarked' in row and row['Embarked'] != '':
+                if row['Embarked'] == 'S':
+                    Embarked = 0
+                if row['Embarked'] == 'C':
+                    Embarked = 1
+                if row['Embarked'] == 'Q':
+                    Embarked = 2
+                else:
+                    Embarked = -1
+
+            x = (Pclass, Sex, Age, SibSp, Parch, Fare, Cabin, Embarked)
 
 
             if load_id:
@@ -64,33 +94,35 @@ def load_passenger_data(file_path, load_id=False):
         for x, y in data:
             age = x[2] / max_age
             fare = x[5] / max_fare
-            normalized_data.append(((x[0], x[1], age, x[3], x[4], fare), y))
+            normalized_data.append(((x[0], x[1], age, x[3], x[4], fare, x[6], x[7]), y))
     return normalized_data
 
 train_valid_data = load_passenger_data('train.csv')
 test_data = load_passenger_data('test.csv', True)
 
 import feedforward as fnn
+import loader as ldr
+import network_utils as nu
 
-train_count = int(.999 * len(train_valid_data))
+train_count = int(.9 * len(train_valid_data))
 
 batch_size = 128
-train_loader = fnn.Loader(train_valid_data[:train_count], batch_size)
-valid_loader = fnn.Loader(train_valid_data[train_count:])
-test_loader = fnn.Loader(test_data)
+train_loader = ldr.Loader(train_valid_data[:train_count], batch_size)
+valid_loader = ldr.Loader(train_valid_data[train_count:])
+test_loader = ldr.Loader(test_data)
 
 
-epochs = 2400 #best results were at 800
+epochs = 1600 #best results were at 800
 
 
 def custom_net():
-    layer_dims = [6, 32, 2]
+    layer_dims = [8, 24, 24, 12, 2] #best is 6, 18, 18, 12, 2
     network = fnn.FNN(layer_dims)
     
     for epoch in range(epochs):
         train_loader.reset()
         while not train_loader.empty():
-            network.train_batch(train_loader.next(), train_loader.size(), lr=0.08, lmbda=0.0)
+            network.train_batch(train_loader.next(), train_loader.size(), lr=0.4, lmbda=0.2)
 
        
         if epoch % 10 == 9:
@@ -102,13 +134,13 @@ def custom_net():
             while not valid_loader.empty():
                 x, labels = valid_loader.next()
                 pred = network.forward(x)
-                loss += fnn.cross_entropy(pred, labels)
+                loss += nu.cross_entropy(pred, labels)
                 for a, b in zip(np.argmax(labels, axis=1), np.argmax(pred, axis=1)):
                     if a == b:
                         correct += 1
                     total += 1
 
-            print("valid Loss: ", np.sum(loss), " Correct: ", correct, "/", total)
+            print("Epoch: ", epoch, "valid Loss: ", np.sum(loss), " Correct: ", correct, "/", total)
 
        
 #        if epoch % 10 == 9:

@@ -1,4 +1,6 @@
 import feedforward as fnn
+import loader as ldr
+import network_utils as nu
 import numpy as np
 import torch
 import torch.nn as nn
@@ -10,17 +12,14 @@ import torch.optim as optim
 #now look at my custom one and test again
 #wrap scripts into two functions (train pytorch model vs train custom model)
 
-
-train_data, valid_data, test_data = fnn.load_data(1.0)
-
+train_data, valid_data, test_data = ldr.load_data(.1)
 
 batch_size = 32
-epochs = 50
+epochs = 10
 
-train_loader = fnn.Loader(train_data, batch_size)
-valid_loader = fnn.Loader(valid_data)
-test_loader = fnn.Loader(test_data, batch_size)
-
+train_loader = ldr.Loader(train_data, batch_size)
+valid_loader = ldr.Loader(valid_data)
+test_loader = ldr.Loader(test_data, batch_size)
 
 def custom_net():
     layer_dims = [784, 64, 10]
@@ -33,7 +32,7 @@ def custom_net():
         train_loader.reset()
         #train_loader.shuffle()
         while not train_loader.empty():
-            network.train_batch(train_loader.next(), train_loader.size())
+            network.train_batch(train_loader.next(), train_loader.size(), lr=1.0, lmbda=0.0)
 
         valid_loader.reset()
         #valid_loader.shuffle()
@@ -45,7 +44,7 @@ def custom_net():
         while not valid_loader.empty():
             x, labels = valid_loader.next()
             pred = network.forward(x)
-            loss += fnn.cross_entropy(pred, labels)
+            loss += nu.cross_entropy(pred, labels)
             for a, b in zip(np.argmax(labels, axis=1), np.argmax(pred, axis=1)):
                 if a == b:
                     correct += 1

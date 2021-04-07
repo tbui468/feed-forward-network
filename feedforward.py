@@ -1,7 +1,5 @@
-import gzip
-import pickle
 import numpy as np
-import random
+import network_utils as nu
 
 #Andrej Kaparthy Tips:
     #initialize bias to mean (if regression).  If positive:negative ration is 1:10, set weights so initial probability output is .1
@@ -36,48 +34,9 @@ import random
 #batch size of 32 with lr =0.2 causes both loss function and accuracy to increase near the end
 #best .1851 loss, 97.69% accuracy
 
+#pytorch convnet gives 98%+ with no tuning
+
 #********************NETWORK********************************
-
-#***************MSE/Cross Entropy and Sigmoid activation****************
-#MSE is output minus labeled ground truth
-def mse(pred, truth):
-    batch_size = pred.shape[0]
-    return np.square(pred - truth) / 2.0 / batch_size
-
-def mse_grad(pred, truth, z):
-    sp = sigmoid_prime(z)
-    return np.multiply(pred - truth, sp)
-
-def sigmoid(z):
-    return 1.0 / (1.0 + np.exp(-z))
-
-def sigmoid_prime(z):
-    return sigmoid(z) * (1 - sigmoid(z))
-
-def cross_entropy(pred, truth):
-    batch_size = pred.shape[0]
-    one_minus_pred = np.ones(pred.shape) - pred
-    one_minus_truth = np.ones(truth.shape) - truth
-    term_one = np.multiply(truth, np.log(pred))
-    term_two = np.multiply(one_minus_truth, np.log(one_minus_pred))
-    return -(term_one + term_two) / batch_size
-
-#doesn't use z term, but just keeping consistent APIs for gradient functions
-def cross_entropy_grad(pred, truth, z):
-    return pred - truth
-
-#************Log likelihood and Softmax (for output)*********
-#does using softmax for output change the cross entropy gradient - it might - need to to find derivative wrt input z
-def softmax(z):
-    exp_sum = np.reshape(np.sum(np.exp(z), axis=1), (-1, 1))
-    return np.divide(np.exp(z), np.repeat(exp_sum, z.shape[1], axis=1))
-
-def log_likelihood(pred, truth):
-    print('hi')
-
-def log_likelihood_grad(pred, truth, z):
-    print('hi')
-
 #define the vanilla feedforward network
 #activations and z need to be 2d matrices since the first dimension is for batch - or just average them
 class FNN:
@@ -86,20 +45,17 @@ class FNN:
         self.weights = [np.random.normal(0.0, 1.0 / np.sqrt(input_dim), (input_dim, output_dim)) for input_dim, output_dim in zip(dims[:-1], dims[1:])]
         np.random.seed(0)
         self.biases = [np.zeros((1, x)) for x in dims[1:]]
-        self.a = [0 for dim in dims[1:]]
-        self.z = [0 for dim in dims[1:]]
-        self.errors = [np.zeros(dim) for dim in dims[1:]]
+        self.a = [0 for dim in dims[:]]
+        self.z = [0 for dim in dims[:]]
    
     def forward(self, x):
         batch_size = x.shape[0]
         y = x
+        self.a[0] = x
         for idx, (w, b) in enumerate(zip(self.weights, self.biases)):
-            self.z[idx] = np.matmul(y, w) + np.tile(b, (x.shape[0], 1))
-            if idx == 1:
-                self.a[idx] = sigmoid(self.z[idx])
-            else:
-                self.a[idx] = sigmoid(self.z[idx])
-            y = self.a[idx]
+            self.z[idx + 1] = np.matmul(y, w) + np.tile(b, (x.shape[0], 1))
+            self.a[idx + 1] = nu.sigmoid(self.z[idx + 1])
+            y = self.a[idx + 1]
         return y
 
     def train_batch(self, batch, set_size, lr=0.2, lmbda=5.0):
@@ -110,17 +66,19 @@ class FNN:
         
         #updating weights/biases in final layer
         #cost_grad = mse_grad(pred, truth, self.z[1])
-        cost_grad = cross_entropy_grad(pred, truth, self.z[1])
-        self.errors[1] = cost_grad
-        self.weights[1] *= weight_decay
-        self.weights[1] -= lr * np.matmul(np.transpose(self.a[0]), self.errors[1]) / batch_size
-        self.biases[1] -= lr * np.sum(self.errors[1], axis=0) / batch_size
+        cost_grad = nu.cross_entropy_grad(pred, truth, self.z[-1])
+        last_error = cost_grad
+        self.weights[-1] *= weight_decay
+        self.weights[-1] -= lr * np.matmul(np.transpose(self.a[-2]), last_error) / batch_size
+        self.biases[-1] -= lr * np.sum(last_error, axis=0) / batch_size
 
-        #updating weights and biases in second layer - note: cross entropy cost only avoids sigmoid saturation on output, sigmoid prime terms still in other layers
-        weight_err2 = np.matmul(self.errors[1], np.transpose(self.weights[1]))
-        sigmoid_p1 = sigmoid_prime(self.z[0])
-        self.errors[0] = np.multiply(weight_err2, sigmoid_p1)
-        self.weights[0] *= weight_decay
-        self.weights[0] -= lr * np.matmul(np.transpose(x), self.errors[0]) / batch_size
-        self.biases[0] -= lr * np.sum(self.errors[0], axis=0) / batch_size
+        #loop from second to last layer to layer 2
+        for i in range(2, len(self.weights) - 1):
+            weight_err2 = np.matmul(last_error, np.transpose(self.weights[-(i - 1)])) #last index
+            sigmoid_p1 = nu.sigmoid_prime(self.z[-i])
+            current_error = np.multiply(weight_err2, sigmoid_p1)
+            self.weights[-i] *= weight_decay
+            self.weights[-i] -= lr * np.matmul(np.transpose(self.a[-(i + 1)]), current_error) / batch_size
+            self.biases[-i] -= lr * np.sum(current_error, axis=0) / batch_size
+            last_error = current_error
 

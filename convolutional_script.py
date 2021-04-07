@@ -1,18 +1,53 @@
 import convolutional as cnn
 import loader as ldr
+import network_utils as nu
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
-train_data, valid_data, test_data = ldr.load_data(1.0)
+train_data, valid_data, test_data = ldr.load_data(0.001)
 
-batch_size = 32
+batch_size = 1
 epochs = 10
 
 train_loader = ldr.Loader(train_data, batch_size)
 valid_loader = ldr.Loader(valid_data)
 test_loader = ldr.Loader(test_data, batch_size)
+
+def conv_net():
+    model = cnn.CNN()
+    #batch = np.random.normal(0.0, 1.0, (2, 1, 28, 28))
+    #pr = model.forward(batch)
+    #print(pr)
+    for epoch in range(epochs):
+        train_loader.reset()
+        #train_loader.shuffle()
+        while not train_loader.empty():
+            x, y = train_loader.next()
+            x = x.reshape(batch_size, 1, 28, 28)
+            model.train((x, y), train_loader.size(), lr=1.0, lmbda=0.0)
+
+        valid_loader.reset()
+        #valid_loader.shuffle()
+        total = 0
+        correct = 0
+        loss = 0
+        
+        #why isn't the entire validation set being used???
+        while not valid_loader.empty():
+            x, y = valid_loader.next()
+            x = x.reshape(x.shape[0], 1, 28, 28)
+            pred = model.forward(x)
+            loss += nu.cross_entropy(pred, y)
+            for a, b in zip(np.argmax(y, axis=1), np.argmax(pred, axis=1)):
+                if a == b:
+                    correct += 1
+                total += 1
+
+        print("Loss: ", np.sum(loss), " Correct: ", correct, "/", total)
+
+conv_net()
 
 def pytorch_net():
     #define a ff network in pytorch
@@ -76,4 +111,4 @@ def pytorch_net():
         print("Loss: ", loss.item(), " Correct: ", correct, "/", total)
 
 
-pytorch_net()
+#pytorch_net()

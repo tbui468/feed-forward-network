@@ -2,7 +2,6 @@
 import numpy as np
 import network_utils as nu
 
-#encountering divide by zero when testing validation or training???
 #derive backprop equations for convnets (look at JefKine blog bookmarked on this topic)
 
 class CNN:
@@ -17,7 +16,7 @@ class CNN:
         self.pool_kdim = 3
         self.pool_outdim = int(self.conv_outdim / self.pool_kdim) #using a stride of 1 for conv kernel, and stride of 3 for pooling kernel
         np.random.seed(0) 
-        self.conv_weights = np.random.normal(0.0, 1.0 / np.sqrt(self.conv_kdim * self.conv_kdim), (self.map_count, self.conv_kdim, self.conv_kdim))
+        self.conv_weights = np.random.normal(0.0, 1.0 / np.sqrt(self.map_count * self.conv_kdim * self.conv_kdim), (self.map_count, self.conv_kdim, self.conv_kdim))
         np.random.seed(0) 
         self.conv_biases = np.zeros((1, self.map_count))
         

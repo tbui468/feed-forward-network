@@ -42,6 +42,7 @@ def log_likelihood_grad(pred, truth, z):
     print('hi')
 
 #**************testing theoretical ReLog*******************
+#not really working
 def relog_single(z):
     if z <= 0:
         return 0

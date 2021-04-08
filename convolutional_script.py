@@ -26,7 +26,7 @@ def conv_net():
         while not train_loader.empty():
             x, y = train_loader.next()
             x = x.reshape(batch_size, 1, 28, 28)
-            model.train((x, y), train_loader.size(), lr=1.0, lmbda=0.0)
+            model.train((x, y), train_loader.size(), lr=0.1, lmbda=0.0)
 
         valid_loader.reset()
         #valid_loader.shuffle()
